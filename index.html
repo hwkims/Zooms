@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuperMeet - Powered by Jitsi (Demo)</title>
+    <style>
+        /* Reset & Basic Styles */
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        body { display: flex; flex-direction: column; }
+        #main { flex: 1; display: flex; }
+
+        /* Video Container */
+        #videoContainer { flex: 3; background: #000; position: relative; }
+        #localVideo, #remoteVideo { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+        #remoteVideo { opacity: 0; transition: opacity 0.5s; } /* Initially hidden */
+
+        /* Controls */
+        #controls { flex: 1; padding: 20px; background: #f0f0f0; display: flex; flex-direction: column; }
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        select, button { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+        button { background: #4CAF50; color: white; cursor: pointer; }
+        button:hover { background: #3e8e41; }
+        button.red { background: #f44336; }
+        button.red:hover { background: #da190b; }
+        #leaveButton{
+            margin-top: auto;
+        }
+
+        /* "Connecting..." Overlay */
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); color: white; display: flex; justify-content: center; align-items: center; font-size: 24px; z-index: 10; }
+
+        /* Fake "Remote Video Connected" State */
+        #remoteVideo.connected { opacity: 1; }
+
+    </style>
+</head>
+<body>
+    <div id="main">
+        <div id="videoContainer">
+            <video id="localVideo" autoplay muted></video>
+            <video id="remoteVideo" autoplay></video>
+            <div id="overlay">Connecting...</div>
+        </div>
+        <div id="controls">
+            <h1>SuperMeet</h1>
+            <p>Jitsi-powered Meeting (Demo)</p>
+
+            <div class="control-group">
+                <label>Your Role:</label>
+                <span id="userRole"></span>
+            </div>
+
+            <div class="control-group">
+                <label>Meeting ID:</label>
+                <span id="meetingId"></span>
+            </div>
+            <div class="control-group" id="deviceSelection">
+                <label for="audioSource">Audio Input:</label>
+                <select id="audioSource"></select>
+             </div>
+
+            <button id="connectButton">Join Meeting</button>
+            <button id="leaveButton" class="red" style="display: none;">Leave Meeting</button>
+        </div>
+    </div>
+
+    <script>
+        // Mock Data & Elements
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const overlay = document.getElementById('overlay');
+        const connectButton = document.getElementById('connectButton');
+        const leaveButton = document.getElementById('leaveButton');
+        const audioSourceSelect = document.getElementById('audioSource');
+        const userRoleSpan = document.getElementById('userRole');
+        const meetingIdSpan = document.getElementById('meetingId');
+        const deviceSelection = document.getElementById('deviceSelection');
+
+
+        let isConnected = false;
+
+        // --- Helper Functions ---
+
+        // Parse URL Parameters
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                role: params.get('role') || 'guest', // 'A', 'B', 'C', or 'guest'
+                roomId: params.get('roomId') || 'defaultRoom',
+                audioId: params.get('audioId') || null, // For B
+            };
+        }
+
+        // Get Mock Audio Devices (In a real app, use enumerateDevices())
+        async function getMockAudioDevices() {
+            return [
+                { deviceId: 'default', label: 'Default Microphone' },
+                { deviceId: 'mic1', label: 'Microphone (Realtek High Definition Audio)' },
+                { deviceId: 'mic2', label: 'Microphone (USB Audio Device)' },
+                { deviceId: 'camMic', label: 'Webcam Microphone' } //Cam mic example
+            ];
+        }
+
+
+        // --- Initialization ---
+
+        async function init() {
+            const urlParams = getUrlParams();
+            userRoleSpan.textContent = urlParams.role.toUpperCase();  // Display as A, B, or C
+            meetingIdSpan.textContent = urlParams.roomId;
+            
+            // --- UI setup ---
+            if(urlParams.role === "A"){
+                //A can select devices.
+                deviceSelection.style.display = "block"
+            } else if(urlParams.role === "B") {
+                //B gets auto selected.
+                deviceSelection.style.display = "none"
+
+            }else{
+                //C also
+                deviceSelection.style.display = "block"
+            }
+
+            // Local video setup
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = stream;
+            } catch (err) {
+                console.error("Error accessing media devices.", err);
+                alert("Could not access camera/microphone. Please check permissions.");
+                return;
+            }
+
+            // Populate audio device select (if applicable)
+            const audioDevices = await getMockAudioDevices(); // Use mock for demo.
+            audioDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label;
+                audioSourceSelect.appendChild(option);
+            });
+
+           // --- Auto-Join Logic (for B)---
+           if (urlParams.role === 'B') {
+                //Simulate auto joining.
+                connectButton.style.display = 'none';
+                leaveButton.style.display = 'block';
+                overlay.textContent = 'Auto-Joining...';
+
+                //Pre select audio.
+                if(urlParams.audioId){
+                    audioSourceSelect.value = urlParams.audioId;
+                }
+
+                // Simulate connection delay and then "connect"
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    remoteVideo.classList.add('connected'); // "Show" remote video.
+                    isConnected = true; //Update state
+                }, 3000); // Simulate 3 seconds
+           } else {
+                // For A and C, require manual join
+                connectButton.addEventListener('click', handleJoinClick);
+           }
+
+           // --- Leave Button ---
+           leaveButton.addEventListener('click', () => {
+                // Simulate leaving the meeting
+                remoteVideo.classList.remove('connected');
+                overlay.textContent = 'Left Meeting';
+                overlay.style.display = 'flex';
+                isConnected = false;
+
+                connectButton.style.display = "block";
+                leaveButton.style.display = 'none';
+
+                // In a real app, you would also:
+                // 1. Disconnect from signaling server
+                // 2. Close PeerConnections
+                // 3. Stop media tracks.
+            });
+        }
+        // --- Event Handlers ---
+
+        async function handleJoinClick() {
+            if (isConnected) return;  // Prevent multiple joins.
+
+            // 1.  "Connect" to signaling server (fake)
+            overlay.textContent = 'Connecting...';
+            connectButton.disabled = true;
+
+            // 2. Set up WebRTC (simplified, no actual ICE exchange)
+            //    In a real app:
+            //    - Create RTCPeerConnection
+            //    - Add local stream
+            //    - Exchange SDP offers/answers via signaling server
+            //    - Handle ICE candidates
+
+            // 3. Simulate connection establishment
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                remoteVideo.classList.add('connected'); // "Show" remote video.
+                isConnected = true;
+                connectButton.style.display = 'none'; // Hide "Join"
+                leaveButton.style.display = 'block'; // Show "Leave"
+            }, 2000);  // Fake 2-second connection time
+
+        }
+
+        // --- Start ---
+        init();
+
+    </script>
+</body>
+</html>
